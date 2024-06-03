@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <title>Dynamic Content</title>
+    <style>
+        .ltr {
+            text-align: left;
+        }
+        .rtl {
+            text-align: right;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .italic {
+            font-style: italic;
+        }
+        .underline {
+            text-decoration: underline;
+        }
+        .strikethrough {
+            text-decoration: line-through;
+        }
+        .nested {
+            list-style-type: none;
+        }
+    </style>
+</head>
+<body>
+<div th:utext="${dynamicContent}">
+
+</div>
+</body>
+</html>
