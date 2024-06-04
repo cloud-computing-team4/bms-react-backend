@@ -1,0 +1,100 @@
+name: Deploy BMS Development Server
+
+on: workflow_dispatch
+
+jobs:
+  deploy_development:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+
+      - name: Create Cache Docker Image Directory
+        run: mkdir -p ~/db-docker-image
+
+      - name: Cache DB Docker Image
+        id: db-docker-image
+        uses: actions/cache@v3
+        with:
+          path: ~/db-docker-image
+          key: db-docker-image-${{ runner.os }}
+
+      - name: Pull DB Image From ECR
+        if: steps.db-docker-image.outputs.cache-hit != 'true'
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker pull $ECR_REGISTRY/doo-re-dev:${{ secrets.DOORE_DB_TAG }}
+          docker save -o \
+            ~/db-docker-image/doo-re-db.tar \
+            $ECR_REGISTRY/bms-prod:${{ secrets.DOORE_DB_TAG }}
+
+      - name: Create Docker Env File
+        run: |
+          echo '${{ secrets.DOCKER_ENV }}' >> .env
+          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> .env
+
+      - name: Create Docker Compose File
+        run: |
+          echo '${{ secrets.DOCKER_COMPOSE }}' >> docker-compose.yml
+
+      - name: Start Containers
+        run: docker-compose -p doo-re up -d
+
+      - name: Gradle Build & Test
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-version: 8.5
+          arguments: build
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'ref/heads/develop' }}
+
+      - run: java -Djarmode=layertools -jar build/libs/bms-0.0.1-SNAPSHOT.jar extract
+
+      - name: Compress
+        run: |
+          tar -zcf ${GITHUB_SHA::8}.tar.gz \
+            dependencies \
+            snapshot-dependencies \
+            spring-boot-loader \
+            application
+
+      - name: Upload to S3
+        run: |
+          aws s3 mv --region ${{ secrets.AWS_REGION }} \
+          ${GITHUB_SHA::8}.tar.gz \
+          ${{ secrets.S3_DEV_BACK_LOCATION }}/${GITHUB_SHA::8}.tar.gz
+
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST_DEV }}
+          username: ${{ secrets.SSH_USERNAME_DEV }}
+          port: ${{ secrets.SSH_PORT_DEV }}
+          key: ${{ secrets.SSH_KEY_DEV }}
+          envs: GITHUB_SHA # FIX
+          script: |
+            cd ~/01-doo-re-infrastructure/doo-re/deploy 
+            chmod +x ./deploy_server.sh
+            sudo ./deploy_server.sh ${GITHUB_SHA::8} dev
