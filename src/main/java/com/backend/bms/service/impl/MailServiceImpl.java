@@ -61,7 +61,7 @@ public class MailServiceImpl implements MailService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public void sendBulkMail(Long mailId) {
         Mail findMail = mailRepository.findById(mailId).orElseThrow(() ->
-                new IllegalArgumentException(mailId + " 에 해당하는 메일을 찾을 수 없습니다."));
+                new EntityNotFoundException("메일을 찾을 수 없습니다: " + mailId));
         startBulkMailJob(findMail.getId(), findMail.getTitle(), findMail.getContent());
     }
 
