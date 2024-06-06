@@ -5,7 +5,7 @@ spring:
     job:
       name: ${job.name:NONE}
   datasource:
-    url: jdbc:mysql://127.0.0.1:3306/bms
+    url: jdbc:mysql://db:3306/bms
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: user
     password: 1234
